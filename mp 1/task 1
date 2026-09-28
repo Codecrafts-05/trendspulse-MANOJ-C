@@ -1,0 +1,175 @@
+import requests
+import time
+import json
+import os
+from datetime import datetime
+
+
+# Hacker News top stories API
+url = "https://hacker-news.firebaseio.com/v0/topstories.json"
+
+# Identify our application
+headers = {"User-Agent": "TrendPulse/1.0"}
+
+
+# Fetch top story IDs
+try:
+    response = requests.get(url,
+    headers=headers,
+    timeout=10)
+    response.raise_for_status()
+    story_ids = response.json()
+
+except requests.RequestException as e:
+    print("Failed to fetch story IDs:", e)
+    story_ids = []
+
+
+print("Total IDs:", len(story_ids))
+
+
+# Store up to 25 stories for each category
+categories = {
+    "technology": [],
+    "worldnews": [],
+    "sports": [],
+    "science": [],
+    "entertainment": []
+}
+
+
+# Keywords used to identify each category
+keywords = {
+    "technology": [
+        "AI", "software", "tech", "code", "computer",
+        "data", "cloud", "API", "GPU", "LLM",
+        "developer", "programming", "open source", "app",
+        "web", "internet", "linux", "python", "javascript",
+        "database", "server", "robot", "machine learning"
+    ],
+
+    "worldnews": [
+        "war", "government", "country", "president",
+        "election", "climate", "attack", "global",
+        "politics", "political", "minister", "congress",
+        "law", "policy", "china", "india", "russia",
+        "ukraine", "israel", "iran", "europe", "american"
+    ],
+
+    "sports": [
+        "NFL", "NBA", "FIFA", "sport", "game",
+        "team", "player", "league", "championship",
+        "football", "soccer", "basketball", "baseball",
+        "tennis", "cricket", "match", "coach", "win"
+    ],
+
+    "science": [
+        "research", "study", "space", "physics",
+        "biology", "discovery", "NASA", "genome",
+        "scientist", "science", "medical", "health",
+        "medicine", "chemistry", "quantum", "earth",
+        "planet", "astronomy", "energy", "experiment"
+    ],
+
+    "entertainment": [
+        "movie", "film", "music", "Netflix", "game",
+        "book", "show", "award", "streaming",
+        "actor", "actress", "TV", "television",
+        "series", "video", "YouTube", "Disney",
+        "concert", "album", "gaming"
+    ]
+}
+
+
+# Find category based on keywords in the title
+def find_category(title):
+
+    title = title.lower()
+
+    for category, words in keywords.items():
+
+        for word in words:
+
+            if word.lower() in title:
+                return category
+
+    return None
+
+
+# Fetch each story only once
+stories = []
+
+for story_id in story_ids:
+    story_url = f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json"
+
+    try:
+        story_response = requests.get(
+            story_url,
+            headers=headers,
+            timeout=10
+        )
+
+        story_response.raise_for_status()
+        story = story_response.json()
+        stories.append(story)
+
+    except requests.RequestException:
+        print("Failed to fetch story:", story_id)
+        continue
+
+
+# Collect up to 25 stories per category
+for category in categories:
+    print("Collecting:", category)
+
+    for story in stories:
+
+        if len(categories[category]) >= 25:
+            break
+
+        title = story.get("title", "")
+
+        story_category = find_category(title)
+
+        if story_category == category:
+
+            story_data = {
+                "post_id": story.get("id"),
+                "title": story.get("title", ""),
+                "category": category,
+                "score": story.get("score", 0),
+                "num_comments": story.get("descendants", 0),
+                "author": story.get("by", ""),
+                "collected_at": datetime.now().isoformat()
+            }
+
+            categories[category].append(story_data)
+
+    # Wait 2 seconds between categories
+    time.sleep(2)
+
+
+# Combine all category stories into one list
+all_stories = []
+
+for category in categories:
+    all_stories.extend(categories[category])
+
+
+# Create data folder if it does not exist
+os.makedirs("data", exist_ok=True)
+
+
+# Create filename using today's date
+date = datetime.now().strftime("%Y%m%d")
+
+filename = f"data/trends_{date}.json"
+
+
+# Save stories to JSON file
+with open(filename, "w", encoding="utf-8") as file:
+    json.dump(all_stories, file, indent=2)
+
+
+# Print final result
+print(f"Collected {len(all_stories)} stories. Saved to {filename}")
